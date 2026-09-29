@@ -125,4 +125,36 @@ export class ApplicationRepository {
       riskScore: application.riskScore,
     };
   }
+
+  async findByApplicantAndScheme(applicantId: string, schemeId: string): Promise<ApplicationDTO | null> {
+    const application = await prisma.application.findFirst({
+      where: { 
+        applicantId,
+        schemeId,
+        status: { notIn: ['REJECTED', 'DISBURSED'] } // Exclude terminal states if allowed to re-apply
+      },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        schemeId: true,
+        applicantId: true,
+        academicYear: true,
+        formData: true,
+        status: true,
+        riskScore: true,
+      }
+    });
+
+    if (!application) return null;
+
+    return {
+      id: toApplicationId(application.id),
+      schemeId: toSchemeId(application.schemeId),
+      applicantId: toApplicantId(application.applicantId),
+      academicYear: application.academicYear,
+      formData: application.formData,
+      status: application.status as ApplicationStatus,
+      riskScore: application.riskScore,
+    };
+  }
 }

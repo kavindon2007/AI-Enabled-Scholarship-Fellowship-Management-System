@@ -1,7 +1,7 @@
 import { ApplicationRepository } from '../repositories/applicationRepository';
 import { ApplicationDTO } from '../types';
 import { CreateApplicationDTO, UpdateApplicationDTO, SubmitApplicationDTO } from '../schemas/applicationSchemas';
-import { NotFoundError, ConflictError, ValidationError } from '../errors/AppError';
+import { NotFoundError, ConflictError, ValidationError, UnauthorizedError } from '../errors/AppError';
 import {
   ApplicationId,
   toApplicationId,
@@ -20,7 +20,11 @@ export class ApplicationService {
     this.repository = repository;
   }
 
-  async createApplication(data: CreateApplicationDTO): Promise<ApplicationDTO> {
+  async createApplication(data: CreateApplicationDTO, actorId: string, role: string): Promise<ApplicationDTO> {
+    if (role !== 'APPLICANT' && data.applicantId !== actorId) {
+      throw new UnauthorizedError('Officers cannot create applications on behalf of applicants');
+    }
+  
     const scheme = await this.repository.getScheme(toSchemeId(data.schemeId));
 
     if (!scheme) {
@@ -32,7 +36,11 @@ export class ApplicationService {
       throw new ConflictError(`Application window is closed for scheme ${scheme.schemeCode}`);
     }
 
-    // TODO: Verify if applicant already has an application for this scheme and year.
+    // Enforce one active application per applicant per scheme/year
+    const existing = await this.repository.findByApplicantAndScheme(data.applicantId, data.schemeId);
+    if (existing && existing.academicYear === data.academicYear) {
+      throw new ConflictError(`Active application already exists for this scheme and year`);
+    }
 
     return this.repository.create({
       schemeId: toSchemeId(data.schemeId),
@@ -42,33 +50,42 @@ export class ApplicationService {
     });
   }
 
-  async getApplication(id: string): Promise<ApplicationDTO> {
+  async getApplication(id: string, actorId: string, role: string): Promise<ApplicationDTO> {
     const application = await this.repository.getById(toApplicationId(id));
 
     if (!application) {
       throw new NotFoundError(`Application ${id} not found`);
     }
+    
+    if (role === 'APPLICANT' && application.applicantId !== actorId) {
+      throw new UnauthorizedError(`Cannot access application owned by another applicant`);
+    }
 
     return application;
   }
 
-  async updateApplication(id: string, data: UpdateApplicationDTO): Promise<ApplicationDTO> {
-    const application = await this.getApplication(id);
+  async updateApplication(id: string, data: UpdateApplicationDTO, actorId: string, role: string): Promise<ApplicationDTO> {
+    const application = await this.getApplication(id, actorId, role);
+
+    if (role === 'APPLICANT' && application.applicantId !== actorId) {
+      throw new UnauthorizedError(`Cannot update application owned by another applicant`);
+    }
 
     if (application.status !== 'DRAFT' && application.status !== 'DEFICIENCY_RAISED' && application.status !== 'RESUBMITTED') {
       throw new ConflictError(`Cannot update application in status ${application.status}`);
     }
-
-    // Assume form validation happens dynamically based on scheme.formConfig here.
-    // For now, let's just accept the record.
 
     return this.repository.update(application.id, {
       formData: data.formData,
     });
   }
 
-  async submitApplication(id: string, data: SubmitApplicationDTO): Promise<ApplicationDTO> {
-    const application = await this.getApplication(id);
+  async submitApplication(id: string, data: SubmitApplicationDTO, actorId: string, role: string): Promise<ApplicationDTO> {
+    const application = await this.getApplication(id, actorId, role);
+
+    if (role === 'APPLICANT' && application.applicantId !== actorId) {
+      throw new UnauthorizedError(`Cannot submit application owned by another applicant`);
+    }
 
     if (application.status !== 'DRAFT' && application.status !== 'DEFICIENCY_RAISED') {
       throw new ConflictError(`Application can only be submitted from DRAFT or DEFICIENCY_RAISED state`);
