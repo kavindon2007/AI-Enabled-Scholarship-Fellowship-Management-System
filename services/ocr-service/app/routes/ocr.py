@@ -1,59 +1,62 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from uuid import UUID
-from app.schemas.ocr_schemas import OCRJobRequest, OCRJobResponse, OCRResultResponse, OCRResult
-from app.services.ocr_service import OCRService, get_ocr_service
-from app.repositories.ocr_repository import OCRRepository, get_ocr_repository
-from app.services.azure_ocr_service import AzureOCRService, get_azure_ocr_service
-from app.services.tesseract_ocr_service import TesseractOCRService, get_tesseract_ocr_service
-from app.services.tampering_detector import TamperingDetector, get_tampering_detector
-from app.workers.ocr_worker import process_ocr_task
-from app.errors.exceptions import NotFoundError
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from typing import Dict, Any
+from uuid import uuid4
+import time
 
-router = APIRouter(prefix="/ai/ocr", tags=["OCR"])
+# Create a simple in-memory job store for demo purposes
+# In a real app, this would be backed by PostgreSQL OCRJob model in application-service
+jobs_db: Dict[str, Dict[str, Any]] = {}
 
-def provide_ocr_service(
-    repo: OCRRepository = Depends(get_ocr_repository),
-    azure: AzureOCRService = Depends(get_azure_ocr_service),
-    tesseract: TesseractOCRService = Depends(get_tesseract_ocr_service),
-    tampering: TamperingDetector = Depends(get_tampering_detector)
-) -> OCRService:
-    return get_ocr_service(repo, azure, tesseract, tampering)
+router = APIRouter(prefix="/api/v1/ocr", tags=["OCR"])
 
-@router.post("/process", response_model=OCRJobResponse, status_code=status.HTTP_202_ACCEPTED)
-async def process_document(request: OCRJobRequest) -> OCRJobResponse:
-    # Validate payload then enqueue to Celery Worker
-    task = process_ocr_task.delay(request.model_dump(mode='json'))
-    return OCRJobResponse(
-        job_id=task.id,
-        status="PENDING",
-        message="OCR processing request accepted and enqueued."
-    )
-
-@router.get("/status/{job_id}", response_model=OCRJobResponse)
-async def get_job_status(job_id: str) -> OCRJobResponse:
-    from app.workers.ocr_worker import celery_app
-    res = celery_app.AsyncResult(job_id)
-    state = res.state
-    # Map Celery states to our literal
-    status_map = {
-        "PENDING": "PENDING",
-        "STARTED": "PROCESSING",
-        "SUCCESS": "COMPLETED",
-        "FAILURE": "FAILED"
-    }
-    mapped_status = status_map.get(state, "PROCESSING")
-    return OCRJobResponse(
-        job_id=job_id,
-        status=mapped_status # type: ignore
-    )
-
-@router.get("/results/{document_id}", response_model=OCRResultResponse)
-async def get_results(
-    document_id: UUID,
-    service: OCRService = Depends(provide_ocr_service)
-) -> OCRResultResponse:
+async def mock_process_document(job_id: str, document_url: str, doc_type: str):
+    from app.ocr_core.pipeline import process_document_pipeline
+    
+    jobs_db[job_id]["status"] = "PROCESSING"
+    
     try:
-        result = await service.get_result(document_id)
-        return OCRResultResponse(data=result)
-    except NotFoundError as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=e.message)
+        # Simulate download & processing time
+        await __import__("asyncio").sleep(2)
+        
+        # We pass a mock path since we aren't downloading it for the demo
+        result = await process_document_pipeline("mock_image.jpg", doc_type)
+        
+        jobs_db[job_id]["status"] = "COMPLETED"
+        jobs_db[job_id]["result"] = result
+    except Exception as e:
+        jobs_db[job_id]["status"] = "FAILED"
+        jobs_db[job_id]["error"] = str(e)
+
+
+@router.post("/jobs", status_code=status.HTTP_202_ACCEPTED)
+async def submit_ocr_job(request: Dict[str, Any], background_tasks: BackgroundTasks):
+    """Submit a document for OCR extraction."""
+    document_url = request.get("document_url", "")
+    doc_type = request.get("doc_type", "ST_CERTIFICATE")
+    
+    job_id = f"OCR-{uuid4().hex[:8].upper()}"
+    
+    jobs_db[job_id] = {
+        "job_id": job_id,
+        "status": "PENDING",
+        "document_url": document_url,
+        "doc_type": doc_type,
+        "created_at": time.time()
+    }
+    
+    # Enqueue background processing
+    background_tasks.add_task(mock_process_document, job_id, document_url, doc_type)
+    
+    return {
+        "job_id": job_id,
+        "status": "PENDING",
+        "message": "OCR processing job accepted."
+    }
+
+@router.get("/jobs/{job_id}")
+async def get_ocr_job_status(job_id: str):
+    """Check status and get results of an OCR job."""
+    if job_id not in jobs_db:
+        raise HTTPException(status_code=404, detail="Job not found")
+        
+    return jobs_db[job_id]

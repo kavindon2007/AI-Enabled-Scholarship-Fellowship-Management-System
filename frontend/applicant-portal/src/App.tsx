@@ -1,10 +1,8 @@
 import React, { useEffect } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, ScrollRestoration } from 'react-router-dom';
 import useAuthStore from './store/useAuthStore';
-import Header from './components/layout/Header';
-import Sidebar from './components/layout/Sidebar';
-import Footer from './components/layout/Footer';
-import MobileNav from './components/layout/MobileNav';
+import GovernmentHeader from './components/ui/gov/GovernmentHeader';
+import GovernmentFooter from './components/ui/gov/GovernmentFooter';
 
 const App: React.FC = () => {
   const { initAuth } = useAuthStore();
@@ -15,16 +13,15 @@ const App: React.FC = () => {
   }, [initAuth]);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50">
-      <Sidebar />
-      <div className="relative flex flex-col flex-1 overflow-y-auto overflow-x-hidden">
-        <Header />
-        <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
-          <Outlet />
-        </main>
-        <Footer />
-        <MobileNav />
-      </div>
+    <div className="flex flex-col min-h-screen bg-gov-bg font-sans text-gov-text">
+      <GovernmentHeader />
+      
+      <main id="main-content" className="flex-1 w-full mx-auto focus:outline-none">
+        <Outlet />
+      </main>
+
+      <GovernmentFooter />
+      <ScrollRestoration />
     </div>
   );
 };
