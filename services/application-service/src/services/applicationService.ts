@@ -96,12 +96,20 @@ export class ApplicationService {
        throw new NotFoundError(`Scheme not found for this application`);
     }
 
+    // Fetch Canonical Applicant Profile for snapshot
+    const profile = await this.repository.getApplicantProfile(application.applicantId);
+    if (!profile) {
+      throw new ConflictError(`Applicant profile not found`);
+    }
+
     // Transition status
     const newStatus = application.status === 'DEFICIENCY_RAISED' ? 'RESUBMITTED' : 'SUBMITTED';
 
     const updatedApplication = await this.repository.update(application.id, {
       status: newStatus,
       submittedAt: new Date(),
+      profileSnapshot: profile,
+      profileVersionSnapshot: profile.profileVersion,
     });
 
     // Emit Kafka Event

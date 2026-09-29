@@ -78,6 +78,8 @@ export class ApplicationRepository {
         applicantId: true,
         academicYear: true,
         formData: true,
+        profileSnapshot: true,
+        profileVersionSnapshot: true,
         status: true,
         riskScore: true,
       }
@@ -91,16 +93,33 @@ export class ApplicationRepository {
       applicantId: toApplicantId(application.applicantId),
       academicYear: application.academicYear,
       formData: application.formData,
+      profileSnapshot: application.profileSnapshot,
+      profileVersionSnapshot: application.profileVersionSnapshot,
       status: application.status as ApplicationStatus,
       riskScore: application.riskScore,
     };
   }
 
-  async update(id: ApplicationId, data: { formData?: unknown; status?: ApplicationStatus; submittedAt?: Date }): Promise<ApplicationDTO> {
+  async getApplicantProfile(applicantId: string): Promise<any | null> {
+    return prisma.applicant.findUnique({
+      where: { id: applicantId },
+      include: {
+        addresses: true,
+        educationRecords: true,
+        disabilityProfile: true,
+        guardianProfile: true,
+        bankAccounts: true,
+      }
+    });
+  }
+
+  async update(id: ApplicationId, data: { formData?: unknown; profileSnapshot?: unknown; profileVersionSnapshot?: number; status?: ApplicationStatus; submittedAt?: Date }): Promise<ApplicationDTO> {
     const application = await prisma.application.update({
       where: { id },
       data: {
         ...(data.formData !== undefined && { formData: data.formData as any }),
+        ...(data.profileSnapshot !== undefined && { profileSnapshot: data.profileSnapshot as any }),
+        ...(data.profileVersionSnapshot !== undefined && { profileVersionSnapshot: data.profileVersionSnapshot }),
         ...(data.status !== undefined && { status: data.status }),
         ...(data.submittedAt !== undefined && { submittedAt: data.submittedAt }),
       },
@@ -110,6 +129,8 @@ export class ApplicationRepository {
         applicantId: true,
         academicYear: true,
         formData: true,
+        profileSnapshot: true,
+        profileVersionSnapshot: true,
         status: true,
         riskScore: true,
       }

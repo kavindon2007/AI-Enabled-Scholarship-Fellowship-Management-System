@@ -11,6 +11,8 @@ export interface ApplicationDTO {
   applicantId: ApplicantId;
   academicYear: string;
   formData: unknown;
+  profileSnapshot?: unknown;
+  profileVersionSnapshot?: number;
   status: ApplicationStatus;
   riskScore: number;
 }
