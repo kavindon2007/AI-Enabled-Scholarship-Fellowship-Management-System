@@ -1,9 +1,11 @@
 import { useState, useCallback } from 'react';
 import useAuthStore from '../store/useAuthStore';
+import { apiClient } from '../api/apiClient';
 
 export const useAuth = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const user = useAuthStore(state => state.user);
   
   const loginAction = useAuthStore(state => state.login);
   const logoutAction = useAuthStore(state => state.logout);
@@ -12,28 +14,26 @@ export const useAuth = () => {
     setIsLoading(true);
     setError(null);
     try {
-      // Mock API call - delay for UX
-      await new Promise(resolve => setTimeout(resolve, 500));
+      const response = await apiClient.post('/auth/login', { aadhaarNumber, otp });
+      const { token, user } = response.data;
       
-      // Accept ANY OTP and ANY Aadhaar number for testing purposes
-      loginAction("mock-jwt-token", {
-        id: 'u1',
-        name: 'Applicant User',
-        email: 'applicant@example.com',
-        role: 'APPLICANT'
-      });
-      
-      // Also write to local user for backwards compatibility with any component checking it
+      loginAction(token, user);
     } catch (err: any) {
-      setError(err.message || 'Login failed');
+      setError(err.response?.data?.error || 'Login failed. Please check credentials.');
     } finally {
       setIsLoading(false);
     }
   }, [loginAction]);
 
-  const logout = useCallback(() => {
-    logoutAction();
+  const logout = useCallback(async () => {
+    try {
+      await apiClient.post('/auth/logout');
+    } catch (e) {
+      console.warn("Logout request failed, clearing local state anyway", e);
+    } finally {
+      logoutAction();
+    }
   }, [logoutAction]);
 
-  return { isLoading, error, loginWithAadhaar, logout };
+  return { isLoading, error, user, loginWithAadhaar, logout };
 };

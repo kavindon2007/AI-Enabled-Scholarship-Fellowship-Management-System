@@ -1,28 +1,13 @@
 import React from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { useApplications } from '../../hooks/useApplications';
+import { useSchemes } from '../../hooks/useSchemes';
 import { SchemeSelector } from '../../components/forms/SchemeSelector';
 
 export const Dashboard: React.FC = () => {
   const { user } = useAuth();
-  const { applications, loading } = useApplications();
-
-  const mockSchemes = [
-    {
-      id: 'sch-1',
-      name: 'Pre-Matric Scholarship',
-      description: 'Financial assistance to minority students studying in classes I to X.',
-      deadline: '2026-11-30T23:59:59Z',
-      eligibilityCriteria: ['Annual family income < 1 Lakh', 'Minimum 50% marks in previous final exam']
-    },
-    {
-      id: 'sch-2',
-      name: 'Post-Matric Scholarship',
-      description: 'Financial assistance to minority students for studies from class XI to Ph.D.',
-      deadline: '2026-12-15T23:59:59Z',
-      eligibilityCriteria: ['Annual family income < 2 Lakhs', 'Minimum 50% marks in previous final exam']
-    }
-  ];
+  const { applications, loading: appsLoading } = useApplications();
+  const { schemes, loading: schemesLoading } = useSchemes();
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -53,7 +38,7 @@ export const Dashboard: React.FC = () => {
         <div className="bg-white overflow-hidden shadow rounded-lg">
           <div className="px-4 py-5 sm:p-6">
             <dt className="text-sm font-medium text-gray-500 truncate">Active Applications</dt>
-            <dd className="mt-1 text-3xl font-semibold text-gray-900">{applications.length}</dd>
+            <dd className="mt-1 text-3xl font-semibold text-gray-900">{appsLoading ? '...' : applications.length}</dd>
           </div>
         </div>
         <div className="bg-white overflow-hidden shadow rounded-lg">
@@ -72,10 +57,14 @@ export const Dashboard: React.FC = () => {
 
       <div className="mt-10">
         <h2 className="text-xl font-semibold text-gray-900 mb-4">Discover Schemes</h2>
-        <SchemeSelector
-          schemes={mockSchemes}
-          onSelect={(id) => console.log('Navigate to apply for', id)}
-        />
+        {schemesLoading ? (
+          <p className="text-gray-500">Loading schemes...</p>
+        ) : (
+          <SchemeSelector
+            schemes={schemes as any}
+            onSelect={(id) => console.log('Navigate to apply for', id)}
+          />
+        )}
       </div>
     </div>
   );

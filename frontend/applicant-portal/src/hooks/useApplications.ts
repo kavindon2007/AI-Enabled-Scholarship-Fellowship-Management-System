@@ -1,28 +1,22 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Application } from '../types';
+import { apiClient } from '../api/apiClient';
 
 export const useApplications = () => {
   const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchApplications = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      // Mock fetching
-      await new Promise(resolve => setTimeout(resolve, 800));
-      setApplications([
-        {
-          id: 'app-1',
-          schemeId: 'sch-1',
-          schemeName: 'Pre-Matric Scholarship',
-          status: 'Under Review',
-          submissionDate: '2026-09-01T10:00:00Z',
-          lastUpdated: '2026-09-15T14:30:00Z',
-          data: {}
-        }
-      ]);
-    } catch (error) {
-      console.error(error);
+      const response = await apiClient.get<{ applications: Application[] }>('/applications');
+      setApplications(response.data.applications || []);
+    } catch (err: any) {
+      console.error(err);
+      setError(err.response?.data?.error || 'Failed to fetch applications');
+      setApplications([]); // No silent fallback in production paths
     } finally {
       setLoading(false);
     }
@@ -34,23 +28,18 @@ export const useApplications = () => {
 
   const submitApplication = useCallback(async (data: Partial<Application>) => {
     setLoading(true);
+    setError(null);
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      // Mock logic to add new application
-      const newApp: Application = {
-        id: `app-${Date.now()}`,
-        schemeId: data.schemeId || '',
-        schemeName: data.schemeName || 'New Scheme',
-        status: 'Submitted',
-        submissionDate: new Date().toISOString(),
-        lastUpdated: new Date().toISOString(),
-        data: data.data || {}
-      };
-      setApplications(prev => [...prev, newApp]);
+      const response = await apiClient.post<{ application: Application }>('/applications', data);
+      setApplications(prev => [...prev, response.data.application]);
+    } catch (err: any) {
+      console.error(err);
+      setError(err.response?.data?.error || 'Failed to submit application');
+      throw err;
     } finally {
       setLoading(false);
     }
   }, []);
 
-  return { applications, loading, refetch: fetchApplications, submitApplication };
+  return { applications, loading, error, refetch: fetchApplications, submitApplication };
 };
