@@ -1,22 +1,12 @@
 // Layer: Repository (Data Access)
 // Responsibility: Encapsulate all database queries, external API calls, and file-system access (MinIO)
 
-import AWS from 'aws-sdk';
 import { Pool } from 'pg';
 import { getProducer } from '../events/kafka.js';
 import { config } from '../config/index.js';
 import { DocumentMetadata, DocumentId } from '../types/index.js';
 import { NotFoundError } from '../errors/AppError.js';
-
-// Setup S3 client for MinIO
-const s3 = new AWS.S3({
-  endpoint: config.MINIO_ENDPOINT,
-  accessKeyId: config.MINIO_ACCESS_KEY,
-  secretAccessKey: config.MINIO_SECRET_KEY,
-  s3ForcePathStyle: true,
-  region: config.MINIO_REGION,
-  sslEnabled: config.MINIO_USE_SSL,
-});
+import { storageProvider } from '../storage/storageProvider.js';
 
 // Setup Postgres Pool
 const pool = new Pool({
@@ -25,34 +15,17 @@ const pool = new Pool({
 
 export class DocumentRepository {
   /**
-   * Upload an object to S3 / MinIO
+   * Upload an object to secure storage
    */
   async uploadFile(s3Key: string, buffer: Buffer, mimeType: string): Promise<void> {
-    await s3.putObject({
-      Bucket: config.MINIO_BUCKET_NAME,
-      Key: s3Key,
-      Body: buffer,
-      ContentType: mimeType,
-    }).promise();
+    await storageProvider.uploadFile(s3Key, buffer, mimeType);
   }
 
   /**
-   * Get an object stream or buffer from S3 / MinIO
+   * Get an object stream or buffer from secure storage
    */
   async downloadFile(s3Key: string): Promise<Buffer> {
-    try {
-      const response = await s3.getObject({
-        Bucket: config.MINIO_BUCKET_NAME,
-        Key: s3Key,
-      }).promise();
-      
-      return response.Body as Buffer;
-    } catch (error: any) {
-      if (error.code === 'NoSuchKey') {
-        throw new NotFoundError(`File with key ${s3Key} not found in storage.`);
-      }
-      throw error;
-    }
+    return storageProvider.downloadFile(s3Key);
   }
 
   /**
