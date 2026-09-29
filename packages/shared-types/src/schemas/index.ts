@@ -100,17 +100,104 @@ export const UserSchema = z.object({
 });
 export type User = z.infer<typeof UserSchema>;
 
+export const AddressSchema = z.object({
+  id: UuidSchema,
+  applicantId: UuidSchema,
+  addressType: z.enum(['PERMANENT', 'CURRENT']),
+  addressLine1: z.string(),
+  addressLine2: z.string().optional().nullable(),
+  villageTownCity: z.string(),
+  district: z.string(),
+  stateUtCode: z.string(),
+  postalCode: z.string(),
+  countryCode: z.string().default('IN'),
+  verificationStatus: z.string().default('UNVERIFIED'),
+});
+export type Address = z.infer<typeof AddressSchema>;
+
+export const EducationRecordSchema = z.object({
+  id: UuidSchema,
+  applicantId: UuidSchema,
+  level: z.string(),
+  qualification: z.string().optional().nullable(),
+  institutionId: z.string().optional().nullable(),
+  institutionName: z.string(),
+  boardUniversity: z.string().optional().nullable(),
+  academicYear: z.string().optional().nullable(),
+  startDate: z.date().optional().nullable(),
+  endDate: z.date().optional().nullable(),
+  marksObtained: z.number().optional().nullable(),
+  marksMaximum: z.number().optional().nullable(),
+  rawCgpa: z.number().optional().nullable(),
+  gradingScale: z.number().optional().nullable(),
+  convertedPercentage: z.number().optional().nullable(),
+  conversionSource: z.string().optional().nullable(),
+  conversionVerified: z.boolean().default(false),
+  verificationStatus: z.string().default('UNVERIFIED'),
+});
+export type EducationRecord = z.infer<typeof EducationRecordSchema>;
+
+export const DisabilityProfileSchema = z.object({
+  id: UuidSchema,
+  applicantId: UuidSchema,
+  hasDisability: z.boolean(),
+  disabilityType: z.string().optional().nullable(),
+  disabilityPercentage: z.number().optional().nullable(),
+  certificateReference: z.string().optional().nullable(),
+  verificationStatus: z.string().default('UNVERIFIED'),
+});
+export type DisabilityProfile = z.infer<typeof DisabilityProfileSchema>;
+
+export const GuardianProfileSchema = z.object({
+  id: UuidSchema,
+  applicantId: UuidSchema,
+  guardianRelationship: z.string(),
+  guardianName: z.string(),
+  incomeSource: z.string().optional().nullable(),
+  familyMemberCount: z.number().int().optional().nullable(),
+  isSingleParent: z.boolean().default(false),
+  isOrphan: z.boolean().default(false),
+});
+export type GuardianProfile = z.infer<typeof GuardianProfileSchema>;
+
+export const BankAccountSummarySchema = z.object({
+  id: UuidSchema,
+  applicantId: UuidSchema,
+  accountNumberEncrypted: z.string(), // Consider omitting entirely from some DTOs
+  ifscCode: IfscCodeSchema,
+  bankName: z.string(),
+  accountHolderName: z.string(),
+  aadhaarSeedingStatus: z.enum(['ACTIVE', 'INACTIVE', 'NEVER_ENABLED', 'UNKNOWN']).default('UNKNOWN'),
+  isPrimary: z.boolean().default(true),
+  verificationStatus: z.string().default('UNVERIFIED'),
+});
+export type BankAccountSummary = z.infer<typeof BankAccountSummarySchema>;
+
 export const ApplicantSchema = z.object({
   id: UuidSchema,
   aadhaarHash: z.string(),
-  name: z.string(),
+  fullName: z.string(),
+  originalName: z.string().optional().nullable(),
+  normalizedName: z.string().optional().nullable(),
   dob: z.date(),
   gender: z.string(),
-  stateOfDomicile: z.string(),
-  casteCategory: z.string(),
-  contactMobile: IndianMobileSchema.optional(),
-  contactEmail: z.string().email().optional(),
-  eKycVerified: z.boolean(),
+  applicantType: z.string().optional().nullable(),
+  identityVerificationStatus: z.string().default('UNVERIFIED'),
+  contactMobile: IndianMobileSchema.optional().nullable(),
+  mobileVerificationStatus: z.string().default('UNVERIFIED'),
+  contactEmail: z.string().email().optional().nullable(),
+  emailVerificationStatus: z.string().default('UNVERIFIED'),
+  preferredLanguage: z.string().default('en'),
+  communityStatus: z.string().default('SELF_DECLARED'),
+  communityName: z.string().optional().nullable(),
+  pvtgStatus: z.string().default('NOT_APPLICABLE'),
+  communityVerificationStatus: z.string().default('PENDING'),
+  communityVerificationSource: z.string().optional().nullable(),
+  communityVerifiedAt: z.date().optional().nullable(),
+  domicileStateUtCode: z.string().optional().nullable(),
+  profileVersion: z.number().int().default(1),
+  profileCompletion: z.number().int().default(0),
+  eKycVerified: z.boolean().default(false),
 });
 export type Applicant = z.infer<typeof ApplicantSchema>;
 
@@ -119,6 +206,8 @@ export const ApplicationVersionSchema = z.object({
   applicationId: UuidSchema,
   versionNumber: z.number().int().min(1),
   formData: z.record(z.unknown()),
+  profileSnapshot: z.record(z.unknown()).optional().nullable(),
+  profileVersionSnapshot: z.number().int().optional().nullable(),
   status: z.enum(APPLICATION_STATUSES),
   riskScore: z.number().int().min(0).max(100),
   riskFlags: z.record(z.unknown()).optional().nullable(),
@@ -134,6 +223,8 @@ export const ApplicationSchema = z.object({
   applicantId: UuidSchema,
   academicYear: AcademicYearSchema,
   formData: z.record(z.unknown()),
+  profileSnapshot: z.record(z.unknown()).optional().nullable(),
+  profileVersionSnapshot: z.number().int().optional().nullable(),
   status: z.enum(APPLICATION_STATUSES),
   version: z.number().int().min(1),
   createdAt: z.date(),
