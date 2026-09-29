@@ -70,9 +70,62 @@ model Scheme {
   eligibilityResults EligibilityResult[]
   disbursements      Disbursement[]
   grievances         Grievance[]
+  schemeVersions     SchemeVersion[]
 
   @@map("schemes")
 }
+
+// ─── SCHEME VERSIONS ───
+model SchemeVersion {
+  id                     String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schemeId               String    @db.Uuid
+  versionNumber          Int
+  eligibilityRules       Json      @db.JsonB
+  formConfig             Json      @db.JsonB
+  docChecklist           Json      @db.JsonB
+  quotaConfig            Json      @db.JsonB
+  scholarshipFormula     Json      @db.JsonB
+  notificationTemplates  Json      @db.JsonB
+  slaConfig              Json      @db.JsonB
+  effectiveFrom          DateTime  @db.Timestamptz(6)
+  effectiveTo            DateTime? @db.Timestamptz(6)
+  createdAt              DateTime  @default(now()) @db.Timestamptz(6)
+
+  scheme                 Scheme    @relation(fields: [schemeId], references: [id], onDelete: Cascade)
+  applications           Application[] // Track which version applied
+  ruleDefinitions        RuleDefinition[]
+
+  @@unique([schemeId, versionNumber])
+  @@map("scheme_versions")
+}
+
+// ─── RULE DEFINITIONS & PROVENANCE ───
+model RuleDefinition {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schemeVersionId String    @db.Uuid
+  ruleCode        String    @db.VarChar(50)
+  description     String    @db.Text
+  logic           Json      @db.JsonB
+  createdAt       DateTime  @default(now()) @db.Timestamptz(6)
+
+  schemeVersion   SchemeVersion @relation(fields: [schemeVersionId], references: [id], onDelete: Cascade)
+  provenances     RuleProvenance[]
+
+  @@map("rule_definitions")
+}
+
+model RuleProvenance {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ruleDefinitionId String    @db.Uuid
+  sourceDocument   String    @db.Text // e.g., "Gazette Notification No. 123"
+  sourceUrl        String?   @db.Text
+  extractedAt      DateTime  @default(now()) @db.Timestamptz(6)
+
+  ruleDefinition   RuleDefinition @relation(fields: [ruleDefinitionId], references: [id], onDelete: Cascade)
+
+  @@map("rule_provenance")
+}
+
 
 // ─── USERS (OFFICERS) ───
 model User {
@@ -99,6 +152,7 @@ model User {
 model Application {
   id                    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   schemeId              String   @db.Uuid
+  schemeVersionId       String?  @db.Uuid
   applicantId           String   @db.Uuid
   academicYear          String   @db.VarChar(9)
   formData              Json     @db.JsonB
@@ -111,8 +165,10 @@ model Application {
   assignedOfficerId     String?  @db.Uuid
   isRenewal             Boolean  @default(false)
   previousApplicationId String?  @db.Uuid
+  version               Int      @default(1)
 
   scheme            Scheme        @relation(fields: [schemeId], references: [id], onDelete: Restrict)
+  schemeVersion     SchemeVersion? @relation(fields: [schemeVersionId], references: [id], onDelete: Restrict)
   applicant         Applicant     @relation(fields: [applicantId], references: [id], onDelete: Restrict)
   assignedOfficer   User?         @relation(fields: [assignedOfficerId], references: [id], onDelete: SetNull)
   previousApp       Application?  @relation("RenewalChain", fields: [previousApplicationId], references: [id], onDelete: SetNull)
@@ -122,6 +178,9 @@ model Application {
   eligibilityResults EligibilityResult[]
   disbursements      Disbursement[]
   grievances         Grievance[]
+  versions           ApplicationVersion[]
+  transitions        WorkflowTransition[]
+  deficiencies       Deficiency[]
 
   @@index([status])
   @@index([schemeId, status])
@@ -129,6 +188,25 @@ model Application {
   @@index([status, assignedOfficerId])
   @@map("applications")
 }
+
+// ─── APPLICATION VERSIONS ───
+model ApplicationVersion {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  applicationId String   @db.Uuid
+  versionNumber Int
+  formData      Json     @db.JsonB
+  status        String   @db.VarChar(30)
+  riskScore     Int      @default(0)
+  riskFlags     Json?    @db.JsonB
+  snapshotAt    DateTime @default(now()) @db.Timestamptz(6)
+  actorId       String?  @db.Uuid // who made this change
+
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@unique([applicationId, versionNumber])
+  @@map("application_versions")
+}
+
 
 // ─── DOCUMENTS ───
 model Document {
@@ -139,6 +217,7 @@ model Document {
   originalFilename     String    @db.VarChar(255)
   fileSizeBytes        Int
   mimeType             String    @db.VarChar(50)
+  checksumSha256       String?   @db.VarChar(64)
   ocrJobId             String?   @db.Uuid
   ocrStatus            String    @default("PENDING") @db.VarChar(20)
   ocrConfidenceOverall Decimal?  @db.Decimal(4, 3)
@@ -147,13 +226,35 @@ model Document {
   verifiedByOfficerId  String?   @db.Uuid
   uploadedAt           DateTime  @default(now()) @db.Timestamptz(6)
   source               String    @default("MANUAL_UPLOAD") @db.VarChar(20)
+  version              Int       @default(1)
 
   application        Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
   verifiedByOfficer  User?       @relation(fields: [verifiedByOfficerId], references: [id], onDelete: SetNull)
+  versions           DocumentVersion[]
 
   @@index([applicationId, docType])
   @@map("documents")
 }
+
+// ─── DOCUMENT VERSIONS ───
+model DocumentVersion {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  documentId       String   @db.Uuid
+  versionNumber    Int
+  storagePath      String   @db.Text
+  originalFilename String   @db.VarChar(255)
+  fileSizeBytes    Int
+  mimeType         String   @db.VarChar(50)
+  checksumSha256   String?  @db.VarChar(64)
+  uploadedAt       DateTime @default(now()) @db.Timestamptz(6)
+  uploadedBy       String?  @db.Uuid
+
+  document         Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, versionNumber])
+  @@map("document_versions")
+}
+
 
 // ─── ELIGIBILITY RESULTS ───
 model EligibilityResult {
@@ -176,6 +277,69 @@ model EligibilityResult {
   @@index([applicationId])
   @@map("eligibility_results")
 }
+
+// ─── VERIFICATIONS ───
+model VerificationRecord {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  documentId    String?  @db.Uuid
+  applicationId String   @db.Uuid
+  entityType    String   @db.VarChar(50) // e.g. "INCOME_CERTIFICATE", "CASTE_CERTIFICATE", "BANK_ACCOUNT"
+  status        String   @db.VarChar(20) // VERIFIED, REJECTED, FLAG
+  verifiedBy    String   @db.Uuid // Officer or System ID
+  verifiedAt    DateTime @default(now()) @db.Timestamptz(6)
+  evidence      Json?    @db.JsonB
+
+  attempts      VerificationAttempt[]
+
+  @@map("verification_records")
+}
+
+model VerificationAttempt {
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  verificationRecordId String   @db.Uuid
+  provider             String   @db.VarChar(50) // e.g., "DIGILOCKER", "MANUAL_OFFICER"
+  attemptedAt          DateTime @default(now()) @db.Timestamptz(6)
+  resultStatus         String   @db.VarChar(20) // SUCCESS, FAILURE, TIMEOUT
+  responsePayload      Json?    @db.JsonB // Audit trail of what adapter returned
+
+  verificationRecord   VerificationRecord @relation(fields: [verificationRecordId], references: [id], onDelete: Cascade)
+
+  @@map("verification_attempts")
+}
+
+// ─── WORKFLOW TRANSITIONS ───
+model WorkflowTransition {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  applicationId      String   @db.Uuid
+  applicationVersion Int
+  fromState          String   @db.VarChar(30)
+  toState            String   @db.VarChar(30)
+  actorId            String   @db.Uuid // ID of Applicant or Officer
+  reason             String?  @db.Text
+  transitionedAt     DateTime @default(now()) @db.Timestamptz(6)
+
+  application        Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@map("workflow_transitions")
+}
+
+// ─── DEFICIENCIES ───
+model Deficiency {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  applicationId String   @db.Uuid
+  raisedBy      String   @db.Uuid // Officer ID
+  raisedAt      DateTime @default(now()) @db.Timestamptz(6)
+  description   String   @db.Text
+  fieldRef      String?  @db.VarChar(100)
+  status        String   @default("OPEN") @db.VarChar(20) // OPEN, RESOLVED
+  resolvedAt    DateTime? @db.Timestamptz(6)
+  resolvedBy    String?  @db.Uuid // Applicant ID usually
+
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@map("deficiencies")
+}
+
 
 // ─── DISBURSEMENTS ───
 model Disbursement {
@@ -234,4 +398,24 @@ model Grievance {
   @@index([status, assignedTo])
   @@index([category, status])
   @@map("grievances")
+}
+
+// ─── AUDIT EVENTS ───
+model AuditEvent {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  correlationId String?  @db.VarChar(100)
+  actorId       String?  @db.Uuid
+  actorType     String?  @db.VarChar(50) // APPLICANT, OFFICER, SYSTEM
+  action        String   @db.VarChar(100)
+  resourceType  String   @db.VarChar(50)
+  resourceId    String?  @db.VarChar(100)
+  details       Json?    @db.JsonB
+  ipAddress     String?  @db.VarChar(45)
+  userAgent     String?  @db.Text
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([action])
+  @@index([actorId])
+  @@index([resourceType, resourceId])
+  @@map("audit_events")
 }
