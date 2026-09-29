@@ -1,0 +1,28 @@
+{
+    "name":  "ai-sfms",
+    "version":  "1.0.0",
+    "private":  true,
+    "description":  "AI-Enabled Scholarship \u0026 Fellowship Management System â€” Ministry of Tribal Affairs",
+    "scripts":  {
+                    "dev":  "npm run dev --workspaces --if-present",
+                    "build":  "npm run build --workspaces --if-present",
+                    "lint":  "npm run lint --workspaces --if-present",
+                    "test":  "npm run test --workspaces --if-present",
+                    "typecheck":  "npm run typecheck --workspaces --if-present",
+                    "docker:up":  "docker compose up -d",
+                    "docker:down":  "docker compose down",
+                    "docker:reset":  "docker compose down -v \u0026\u0026 docker compose up -d",
+                    "migrate":  "npm run migrate --workspace=application-service",
+                    "migrate:reset":  "npm run migrate:reset --workspace=application-service",
+                    "generate":  "npm run generate --workspace=application-service"
+                },
+    "engines":  {
+                    "node":  "\u003e=20.0.0",
+                    "pnpm":  "\u003e=9.0.0"
+                },
+    "workspaces":  [
+                       "packages/*",
+                       "services/*",
+                       "frontend/*"
+                   ]
+}

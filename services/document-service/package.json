@@ -1,0 +1,32 @@
+{
+  "name": "document-service",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "test": "echo \"No tests yet\""
+  },
+  "dependencies": {
+    "@ai-sfms/shared-types": "*",
+    "aws-sdk": "^2.1580.0",
+    "cors": "^2.8.5",
+    "express": "^4.19.0",
+    "express-rate-limit": "^7.2.0",
+    "helmet": "^7.1.0",
+    "kafkajs": "^2.2.4",
+    "multer": "^1.4.5-lts.1",
+    "pino": "^8.19.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/multer": "^1.4.11",
+    "tsx": "^4.7.1",
+    "typescript": "^5.5.0"
+  }
+}

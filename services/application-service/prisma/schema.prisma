@@ -1,0 +1,237 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── APPLICANTS ───
+model Applicant {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  aadhaarHash     String   @unique @db.VarChar(64)
+  name            String   @db.VarChar(200)
+  dob             DateTime @db.Date
+  gender          String   @db.VarChar(10)
+  stateOfDomicile String   @db.VarChar(50)
+  casteCategory   String   @default("ST") @db.VarChar(20)
+  contactMobile   String?  @db.VarChar(10)
+  contactEmail    String?  @db.VarChar(200)
+  eKycVerified    Boolean  @default(false)
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+  lastLoginAt     DateTime @default(now()) @db.Timestamptz(6)
+
+  bankAccounts    BankAccount[]
+  applications    Application[]
+  grievances      Grievance[]
+
+  @@map("applicants")
+}
+
+// ─── BANK ACCOUNTS ───
+model BankAccount {
+  id                     String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  applicantId            String    @db.Uuid
+  accountNumberEncrypted String    @db.Text
+  ifscCode               String    @db.VarChar(11)
+  bankName               String    @db.VarChar(100)
+  accountHolderName      String    @db.VarChar(200)
+  aadhaarSeedingStatus   String    @default("UNKNOWN") @db.VarChar(20) // ACTIVE, INACTIVE, NEVER_ENABLED, UNKNOWN
+  seedingLastCheckedAt   DateTime? @db.Timestamptz(6)
+  pfmsPennyDropStatus    String?   @db.VarChar(20)
+  pennyDropCheckedAt     DateTime? @db.Timestamptz(6)
+  isPrimary              Boolean   @default(true)
+
+  applicant Applicant @relation(fields: [applicantId], references: [id], onDelete: Cascade)
+
+  @@map("bank_accounts")
+}
+
+// ─── SCHEMES ───
+model Scheme {
+  id                     String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schemeCode             String    @unique @db.VarChar(20)
+  schemeName             String    @db.VarChar(200)
+  schemeType             String    @db.VarChar(30)
+  eligibilityRules       Json      @db.JsonB
+  formConfig             Json      @db.JsonB
+  docChecklist           Json      @db.JsonB
+  quotaConfig            Json      @db.JsonB
+  selectionMethod        String    @db.VarChar(20)
+  scholarshipFormula     Json      @db.JsonB
+  notificationTemplates  Json      @db.JsonB
+  slaConfig              Json      @db.JsonB
+  isActive               Boolean   @default(true)
+  applicationWindowStart DateTime  @db.Date
+  applicationWindowEnd   DateTime  @db.Date
+
+  applications       Application[]
+  eligibilityResults EligibilityResult[]
+  disbursements      Disbursement[]
+  grievances         Grievance[]
+
+  @@map("schemes")
+}
+
+// ─── USERS (OFFICERS) ───
+model User {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nicSsoId        String   @unique @db.VarChar(100)
+  name            String   @db.VarChar(200)
+  email           String   @unique @db.VarChar(200)
+  role            String   @db.VarChar(50) // DATA_ENTRY_OPERATOR, SCRUTINY_OFFICER, etc.
+  assignedSchemes String[] @db.VarChar(20) // Array of scheme_code
+  assignedStates  String[] @db.VarChar(50)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+
+  assignedApplications Application[]
+  verifiedDocuments    Document[]
+  overriddenResults    EligibilityResult[]
+  assignedGrievances   Grievance[]         @relation("AssignedGrievances")
+  escalatedGrievances  Grievance[]         @relation("EscalatedGrievances")
+
+  @@map("users")
+}
+
+// ─── APPLICATIONS ───
+model Application {
+  id                    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schemeId              String   @db.Uuid
+  applicantId           String   @db.Uuid
+  academicYear          String   @db.VarChar(9)
+  formData              Json     @db.JsonB
+  status                String   @db.VarChar(30)
+  riskScore             Int      @default(0)
+  riskFlags             Json?    @db.JsonB
+  submittedAt           DateTime? @db.Timestamptz(6)
+  createdAt             DateTime @default(now()) @db.Timestamptz(6)
+  lastUpdatedAt         DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+  assignedOfficerId     String?  @db.Uuid
+  isRenewal             Boolean  @default(false)
+  previousApplicationId String?  @db.Uuid
+
+  scheme            Scheme        @relation(fields: [schemeId], references: [id], onDelete: Restrict)
+  applicant         Applicant     @relation(fields: [applicantId], references: [id], onDelete: Restrict)
+  assignedOfficer   User?         @relation(fields: [assignedOfficerId], references: [id], onDelete: SetNull)
+  previousApp       Application?  @relation("RenewalChain", fields: [previousApplicationId], references: [id], onDelete: SetNull)
+  renewedApps       Application[] @relation("RenewalChain")
+
+  documents          Document[]
+  eligibilityResults EligibilityResult[]
+  disbursements      Disbursement[]
+  grievances         Grievance[]
+
+  @@index([status])
+  @@index([schemeId, status])
+  @@index([applicantId, academicYear])
+  @@index([status, assignedOfficerId])
+  @@map("applications")
+}
+
+// ─── DOCUMENTS ───
+model Document {
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  applicationId        String    @db.Uuid
+  docType              String    @db.VarChar(50)
+  storagePath          String    @db.Text
+  originalFilename     String    @db.VarChar(255)
+  fileSizeBytes        Int
+  mimeType             String    @db.VarChar(50)
+  ocrJobId             String?   @db.Uuid
+  ocrStatus            String    @default("PENDING") @db.VarChar(20)
+  ocrConfidenceOverall Decimal?  @db.Decimal(4, 3)
+  tamperingFlags       Json?     @db.JsonB
+  verifiedStatus       String    @default("PENDING") @db.VarChar(20) // PENDING, VERIFIED, REJECTED, FLAGGED
+  verifiedByOfficerId  String?   @db.Uuid
+  uploadedAt           DateTime  @default(now()) @db.Timestamptz(6)
+  source               String    @default("MANUAL_UPLOAD") @db.VarChar(20)
+
+  application        Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  verifiedByOfficer  User?       @relation(fields: [verifiedByOfficerId], references: [id], onDelete: SetNull)
+
+  @@index([applicationId, docType])
+  @@map("documents")
+}
+
+// ─── ELIGIBILITY RESULTS ───
+model EligibilityResult {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  applicationId  String    @db.Uuid
+  schemeId       String    @db.Uuid
+  ruleSetVersion String    @db.VarChar(20)
+  outcome        String    @db.VarChar(20) // PASS, FAIL, DEFICIENT
+  ruleResults    Json      @db.JsonB
+  evaluatedAt    DateTime  @default(now()) @db.Timestamptz(6)
+  evaluatedBy    String    @default("AI") @db.VarChar(20) // AI, OFFICER
+  officerOverride Boolean  @default(false)
+  officerId      String?   @db.Uuid
+  overrideReason String?   @db.Text
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  scheme      Scheme      @relation(fields: [schemeId], references: [id], onDelete: Restrict)
+  officer     User?       @relation(fields: [officerId], references: [id], onDelete: SetNull)
+
+  @@index([applicationId])
+  @@map("eligibility_results")
+}
+
+// ─── DISBURSEMENTS ───
+model Disbursement {
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  applicationId        String    @db.Uuid
+  schemeId             String    @db.Uuid
+  academicYear         String    @db.VarChar(9)
+  installmentNumber    Int
+  component            String    @db.VarChar(50) // TUITION, MAINTENANCE, etc.
+  amount               Decimal   @db.Decimal(12, 2)
+  currency             String    @default("INR") @db.VarChar(5)
+  pfmsOrderId          String?   @db.VarChar(50)
+  pfmsUtr              String?   @db.VarChar(50)
+  status               String    @db.VarChar(20) // PENDING, CONFIRMED, etc.
+  seedingCheckDate     DateTime? @db.Date
+  seedingStatusAtCheck String?   @db.VarChar(20)
+  attemptedAt          DateTime? @db.Timestamptz(6)
+  confirmedAt          DateTime? @db.Timestamptz(6)
+  failureReason        String?   @db.Text
+  retryCount           Int       @default(0)
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  scheme      Scheme      @relation(fields: [schemeId], references: [id], onDelete: Restrict)
+
+  @@index([applicationId])
+  @@index([status])
+  @@index([pfmsUtr])
+  @@map("disbursements")
+}
+
+// ─── GRIEVANCES ───
+model Grievance {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  applicantId     String    @db.Uuid
+  applicationId   String?   @db.Uuid
+  schemeId        String?   @db.Uuid
+  category        String    @db.VarChar(50) // TECHNICAL, PAYMENT_ISSUE, etc.
+  description     String    @db.Text
+  status          String    @default("OPEN") @db.VarChar(20) // OPEN, RESOLVED, ESCALATED, etc.
+  assignedTo      String?   @db.Uuid
+  slaDeadline     DateTime  @db.Timestamptz(6)
+  escalatedTo     String?   @db.Uuid
+  escalationLevel Int       @default(1)
+  resolutionNotes String?   @db.Text
+  cpgramsRef      String?   @db.VarChar(50)
+  createdAt       DateTime  @default(now()) @db.Timestamptz(6)
+  resolvedAt      DateTime? @db.Timestamptz(6)
+
+  applicant   Applicant    @relation(fields: [applicantId], references: [id], onDelete: Cascade)
+  application Application? @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  scheme      Scheme?      @relation(fields: [schemeId], references: [id], onDelete: SetNull)
+  officer     User?        @relation("AssignedGrievances", fields: [assignedTo], references: [id], onDelete: SetNull)
+  escalatedOfficer User?   @relation("EscalatedGrievances", fields: [escalatedTo], references: [id], onDelete: SetNull)
+
+  @@index([applicantId])
+  @@index([status, assignedTo])
+  @@index([category, status])
+  @@map("grievances")
+}
