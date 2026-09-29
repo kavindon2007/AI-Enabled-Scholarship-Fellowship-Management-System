@@ -4,7 +4,7 @@
 
 
 <p align="center">
-  <img src="./assets/banner.png" alt="AI-SFMS Project Banner" width="100%" />
+  <img src="./assets/Banner.png" alt="AI-SFMS Project Banner" width="100%" />
 </p>
 
 **Ministry of Tribal Affairs (MoTA), Government of India**  
