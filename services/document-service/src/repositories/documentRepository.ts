@@ -2,12 +2,13 @@
 // Responsibility: Encapsulate all database queries, external API calls, and file-system access (MinIO)
 
 import AWS from 'aws-sdk';
+import { Pool } from 'pg';
 import { getProducer } from '../events/kafka.js';
 import { config } from '../config/index.js';
 import { DocumentMetadata, DocumentId } from '../types/index.js';
 import { NotFoundError } from '../errors/AppError.js';
 
-// Setup Mock S3 client for MinIO
+// Setup S3 client for MinIO
 const s3 = new AWS.S3({
   endpoint: config.MINIO_ENDPOINT,
   accessKeyId: config.MINIO_ACCESS_KEY,
@@ -17,9 +18,10 @@ const s3 = new AWS.S3({
   sslEnabled: config.MINIO_USE_SSL,
 });
 
-// Since we're scaffolding, we'll keep a mock in-memory DB so tests can pass without full DB setup
-// In production, this would use Knex or Prisma against PostgreSQL.
-const MOCK_DB = new Map<string, DocumentMetadata>();
+// Setup Postgres Pool
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL || 'postgresql://sfms_admin:CHANGE_ME_IN_PRODUCTION@localhost:5432/sfms_applications'
+});
 
 export class DocumentRepository {
   /**
@@ -57,20 +59,57 @@ export class DocumentRepository {
    * Save document metadata in Database
    */
   async saveMetadata(metadata: DocumentMetadata): Promise<void> {
-    MOCK_DB.set(metadata.id, metadata);
-    // Real implementation:
-    // await prisma.document.create({ data: metadata });
+    const client = await pool.connect();
+    try {
+      await client.query(
+        `INSERT INTO documents (
+          id, "applicationId", "docType", "storagePath", 
+          "originalFilename", "fileSizeBytes", "mimeType", 
+          "uploadedAt", "source", "version"
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [
+          metadata.id, 
+          metadata.applicationId, 
+          metadata.documentType, 
+          metadata.s3Key, 
+          metadata.fileName, 
+          metadata.fileSize, 
+          metadata.mimeType, 
+          metadata.uploadedAt || new Date(),
+          'MANUAL_UPLOAD',
+          1
+        ]
+      );
+    } finally {
+      client.release();
+    }
   }
 
   /**
    * Run a query to fetch document metadata
    */
   async getMetadataById(id: DocumentId): Promise<DocumentMetadata> {
-    const doc = MOCK_DB.get(id);
-    if (!doc) {
-      throw new NotFoundError(`Document with id ${id} not found.`);
+    const client = await pool.connect();
+    try {
+      const res = await client.query('SELECT * FROM documents WHERE id = $1', [id]);
+      if (res.rows.length === 0) {
+        throw new NotFoundError(`Document with id ${id} not found.`);
+      }
+      const row = res.rows[0];
+      return {
+        id: row.id,
+        applicationId: row.applicationId,
+        documentType: row.docType,
+        fileName: row.originalFilename,
+        fileSize: row.fileSizeBytes,
+        mimeType: row.mimeType,
+        s3Key: row.storagePath,
+        uploadedAt: row.uploadedAt,
+        uploadedBy: row.verifiedByOfficerId // Using this as proxy for now
+      };
+    } finally {
+      client.release();
     }
-    return doc;
   }
 
   /**
